@@ -1,0 +1,9 @@
+{
+  "name": "whats-my-ip-bot",
+  "version": "1.0.0",
+  "description": "Telegram-бот What's My IP: соглашение + мини-приложение",
+  "main": "index.js",
+  "scripts": { "start": "node index.js" },
+  "engines": { "node": ">=18" },
+  "dependencies": { "node-telegram-bot-api": "^0.66.0" }
+}
