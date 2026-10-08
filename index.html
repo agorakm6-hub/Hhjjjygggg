@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>What's My IP</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: #070b14;
+    --card: rgba(255,255,255,.06);
+    --line: rgba(255,255,255,.1);
+    --text: #eef3ff;
+    --muted: #a3b1d1;
+    --accent: #34d399;
+    --accent2: #22d3ee;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    min-height: 100vh; min-height: 100dvh;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased; line-height: 1.35;
+    background:
+      radial-gradient(900px 500px at 50% -10%, rgba(34,211,238,.16), transparent 60%),
+      radial-gradient(700px 500px at 100% 100%, rgba(52,211,153,.10), transparent 60%),
+      var(--bg);
+    display: flex; flex-direction: column; align-items: center;
+    padding: calc(env(safe-area-inset-top, 0px) + 28px) 16px calc(env(safe-area-inset-bottom, 0px) + 28px);
+    overflow-x: hidden;
+  }
+
+  #bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+  .globe, .status, .card, .error { position: relative; z-index: 1; }
+  .globe { width: min(70vw, 250px); aspect-ratio: 1; flex: none; }
+  .globe canvas { width: 100%; height: 100%; display: block; }
+
+  .status { margin-top: 14px; min-height: 92px; text-align: center; }
+  .status h1 { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -.3px; background: linear-gradient(90deg, #ffffff, #7ff0ff 55%, #5eead4); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
+  .status p { margin: 8px 0 0; color: var(--muted); font-size: 15px; font-weight: 500; }
+  .dots::after { content: ""; animation: dots 1.3s steps(4, end) infinite; }
+  @keyframes dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
+
+  .check { width: 56px; height: 56px; display: none; margin: 0 auto 8px; }
+  .check circle { fill: rgba(52,211,153,.12); stroke: var(--accent); stroke-width: 3; stroke-dasharray: 176; stroke-dashoffset: 176; }
+  .check path { fill: none; stroke: var(--accent); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 36; stroke-dashoffset: 36; }
+  .check.show { display: block; animation: pop .45s ease-out; }
+  .check.show circle { animation: draw .55s ease-out forwards; }
+  .check.show path { animation: draw .35s .4s ease-out forwards; }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  @keyframes pop { 0% { transform: scale(.6); opacity: 0; } 70% { transform: scale(1.08); } 100% { transform: scale(1); opacity: 1; } }
+
+  .card {
+    width: 100%; max-width: 420px; margin-top: 8px;
+    background: rgba(255,255,255,.07); border: 1px solid rgba(34,211,238,.25); box-shadow: 0 10px 40px rgba(34,211,238,.08); border-radius: 20px;
+    padding: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    opacity: 0; transform: translateY(18px); pointer-events: none;
+    transition: opacity .5s ease, transform .5s ease;
+  }
+  .card.show { opacity: 1; transform: none; pointer-events: auto; }
+  .label { color: var(--accent2); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.8px; }
+  .iprow { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 0 14px; }
+  /* Маска IP рисуется кружками на CSS, а не символами "•": так они всегда ровные в один ряд на любом шрифте */
+  .ip { display: flex; align-items: center; gap: 7px; min-height: 28px; white-space: nowrap; overflow: hidden; }
+  .ip .g { display: flex; align-items: center; gap: 4px; }
+  .ip .d { width: 8px; height: 8px; border-radius: 50%; background: #fff; box-shadow: 0 0 10px rgba(34,211,238,.6); flex: none; }
+  .ip .s { width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,.7); flex: none; align-self: flex-end; margin-bottom: 7px; }
+  .copy {
+    flex: none; display: flex; align-items: center; gap: 6px;
+    border: 0; border-radius: 12px; padding: 10px 14px; cursor: pointer;
+    background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #04130d;
+    font-size: 14px; font-weight: 700;
+  }
+  .copy:active { transform: scale(.97); }
+  .rows { border-top: 1px solid var(--line); }
+  .row { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+  .row:last-child { border-bottom: 0; padding-bottom: 0; }
+  .row span:first-child { color: var(--muted); flex: none; font-weight: 500; }
+  .row span:last-child { text-align: right; word-break: break-word; color: #fff; font-weight: 650; }
+  .vpn { display: none; margin-top: 14px; padding: 12px 14px; border-radius: 14px; background: rgba(251,191,36,.10); border: 1px solid rgba(251,191,36,.35); color: #fde68a; font-size: 13.5px; line-height: 1.45; }
+  .vpn.show { display: block; }
+  .vpn b { color: #fbbf24; }
+  .note { margin-top: 14px; color: var(--muted); font-size: 12.5px; line-height: 1.45; text-align: center; opacity: .85; }
+
+  .error { display: none; width: 100%; max-width: 420px; margin-top: 4px; text-align: center; }
+  .error.show { display: block; }
+  .error p { color: var(--muted); margin: 0 0 14px; font-size: 14px; }
+  .btn {
+    border: 1px solid var(--line); background: var(--card); color: var(--text);
+    border-radius: 12px; padding: 11px 20px; font-size: 15px; cursor: pointer;
+  }
+
+  .toast {
+    position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 28px);
+    transform: translate(-50%, 20px); opacity: 0;
+    background: #15202e; border: 1px solid var(--line); color: var(--text);
+    padding: 10px 16px; border-radius: 12px; font-size: 14px; pointer-events: none;
+    transition: all .3s ease; z-index: 10;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .hint { position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); left: 0; right: 0; text-align: center; color: var(--muted); font-size: 12px; opacity: 0; transition: opacity .4s; pointer-events: none; }
+  .hint.show { opacity: .8; }
+
+  #fxb, #fxt { position: fixed; top: 0; left: 0; width: 100%; height: 100%; }
+  #fxb { z-index: 0; pointer-events: none; }
+  #fxt { z-index: 5; pointer-events: none; }
+  #bam { position: fixed; z-index: 6; left: 0; top: 0; opacity: 0; pointer-events: none; white-space: nowrap;
+    font: 900 46px/1 Impact, "Arial Black", sans-serif; color: #ffe14d; -webkit-text-stroke: 3px #c2260f; paint-order: stroke fill;
+    text-shadow: 0 4px 0 #7a1405, 0 0 24px rgba(255,120,30,.9); }
+  #bam.show { animation: bam 1.5s ease-out forwards; }
+  @keyframes bam {
+    0% { opacity: 0; transform: translate(-50%,-50%) scale(.2) rotate(-14deg); }
+    15% { opacity: 1; transform: translate(-50%,-50%) scale(1.35) rotate(-8deg); }
+    30% { transform: translate(-50%,-50%) scale(1) rotate(-8deg); }
+    80% { opacity: 1; }
+    100% { opacity: 0; transform: translate(-50%,-75%) scale(1.1) rotate(-8deg); }
+  }
+  @keyframes quake {
+    0%, 100% { transform: none; } 10% { transform: translate(-8px,5px); } 20% { transform: translate(7px,-6px); }
+    30% { transform: translate(-6px,-4px); } 40% { transform: translate(6px,5px); } 55% { transform: translate(-4px,3px); }
+    70% { transform: translate(3px,-2px); } 85% { transform: translate(-2px,1px); }
+  }
+  .quake .status, .quake .card, .quake .error { animation: quake .7s linear; }
+</style>
+</head>
+<body>
+  <canvas id="bg"></canvas>
+  <canvas id="fxb"></canvas>
+  <canvas id="fxt"></canvas>
+  <div id="bam"></div>
+  <div class="hint" id="hint2">Тапайте по осколкам</div>
+
+  <div class="globe"><canvas id="globe"></canvas></div>
+
+  <div class="status" id="status">
+    <svg class="check" id="check" viewBox="0 0 64 64"><circle cx="32" cy="32" r="28"/><path d="M20 33 L29 42 L45 24"/></svg>
+    <h1 id="title">Определяем ваш IP<span class="dots"></span></h1>
+    <p id="sub">Подключаемся к сети</p>
+  </div>
+
+  <div class="card" id="card">
+    <div class="label">Ваш IP-адрес</div>
+    <div class="iprow">
+      <div class="ip" id="ip" aria-label="IP-адрес скрыт"></div>
+      <button class="copy" id="copy">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
+        Скопировать
+      </button>
+    </div>
+    <div class="rows">
+      <div class="row"><span>Страна</span><span id="f-country">—</span></div>
+      <div class="row"><span>Регион</span><span id="f-region">—</span></div>
+      <div class="row"><span>Город</span><span id="f-city">—</span></div>
+      <div class="row"><span>Часовой пояс</span><span id="f-tz">—</span></div>
+      <div class="row"><span>Провайдер</span><span id="f-isp">—</span></div>
+      <div class="row"><span>ASN</span><span id="f-asn">—</span></div>
+      <div class="row"><span>Тип адреса</span><span id="f-type">—</span></div>
+      <div class="row"><span>Местное время</span><span id="f-time">—</span></div>
+    </div>
+    <div class="vpn" id="vpn">⚠️ <b>Похоже, вы используете VPN или прокси.</b><br>Показаны данные VPN-сервера, а не ваши. Чтобы увидеть свой настоящий IP и местоположение, отключите VPN и нажмите «Проверить снова».<br><button class="btn" id="recheck" style="margin-top:10px;padding:8px 16px;font-size:14px">Проверить снова</button></div>
+    <div class="note">Адрес скрыт на экране — при копировании он вставится целиком вместе с данными.</div>
+  </div>
+
+  <div class="error" id="error">
+    <p id="errtext"></p>
+    <button class="btn" id="retry">Повторить</button>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div class="hint" id="hint">Коснитесь экрана, чтобы включить звук</div>
+
+<script>
+(function () {
+  'use strict';
+  var tg = window.Telegram && window.Telegram.WebApp;
+  if (tg) {
+    try { tg.ready(); tg.expand(); tg.setHeaderColor('#070b14'); tg.setBackgroundColor('#070b14'); } catch (e) {}
+  }
+  function haptic(kind, style) {
+    try {
+      if (!tg || !tg.HapticFeedback) return;
+      if (kind === 'notify') tg.HapticFeedback.notificationOccurred(style);
+      else tg.HapticFeedback.impactOccurred(style);
+    } catch (e) {}
+  }
+  var $ = function (id) { return document.getElementById(id); };
+  var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+
+  /* ================= ЗВУК (WebAudio, всё синтезируется на лету) ================= */
+  var Snd = (function () {
+    var ctx = null, master = null, muted = false, loading = false, loopTimer = null, drone = null;
+
+    function ensure() {
+      if (!ctx) {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        ctx = new AC();
+        master = ctx.createGain();
+        master.gain.value = 0.9;
+        var comp = ctx.createDynamicsCompressor();   // чтобы громкий перезвон не «хрипел»
+        master.connect(comp);
+        comp.connect(ctx.destination);
+        ctx.onstatechange = function () { if (ctx.state === 'running' && loading) startLoop(); };
+      }
+      if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} }
+      return ctx;
+    }
+    function running() { return ctx && ctx.state === 'running'; }
+
+    function tone(freq, t0, dur, vol, type, freqEnd) {
+      var o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = type || 'sine';
+      o.frequency.setValueAtTime(freq, t0);
+      if (freqEnd) o.frequency.exponentialRampToValueAtTime(freqEnd, t0 + dur);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(vol, t0 + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(g); g.connect(master);
+      o.start(t0); o.stop(t0 + dur + 0.05);
+    }
+
+    function startDrone() {
+      if (drone || !ctx) return;
+      var g = ctx.createGain(), t = ctx.currentTime;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.05, t + 1.2);
+      g.connect(master);
+      var o1 = ctx.createOscillator(), o2 = ctx.createOscillator();
+      o1.type = 'triangle'; o1.frequency.value = 98;
+      o2.type = 'sine'; o2.frequency.value = 147.5;
+      o1.connect(g); o2.connect(g);
+      o1.start(); o2.start();
+      drone = { g: g, oscs: [o1, o2] };
+    }
+    function stopDrone() {
+      if (!drone) return;
+      var d = drone; drone = null;
+      var t = ctx.currentTime;
+      d.g.gain.cancelScheduledValues(t);
+      d.g.gain.setValueAtTime(Math.max(d.g.gain.value, 0.0001), t);
+      d.g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+      d.oscs.forEach(function (o) { try { o.stop(t + 0.5); } catch (e) {} });
+    }
+    function blip() {
+      if (!running() || muted) return;
+      var t = ctx.currentTime;
+      tone(520, t, 0.35, 0.08, 'sine', 780);
+      tone(1040, t + 0.02, 0.22, 0.025, 'sine');
+    }
+    function startLoop() {
+      if (!running() || muted) return;
+      startDrone();
+      if (!loopTimer) { blip(); loopTimer = setInterval(blip, 1100); }
+    }
+
+    return {
+      startLoading: function () { loading = true; ensure(); startLoop(); },
+      stopLoading: function () {
+        loading = false;
+        if (loopTimer) { clearInterval(loopTimer); loopTimer = null; }
+        if (ctx) stopDrone();
+      },
+      unlock: function () {            // вызывается по первому касанию (политика автоплея)
+        ensure();
+        var tries = 0;
+        (function wait() {
+          if (running()) { if (loading) startLoop(); hideHint(); return; }
+          if (tries++ < 20) setTimeout(wait, 50);
+        })();
+      },
+      isRunning: running,
+      success: function () {           // «галочка»: яркий восходящий перезвон (громче и дольше прежнего)
+        if (muted) return;
+        var c = ensure();
+        if (!c) return;
+        function play() {
+          var t = ctx.currentTime + 0.05;
+          // три ноты вверх: ми – соль – до (мажорный аккорд), у каждой колокольный обертон
+          var notes = [[659.25, 0], [783.99, 0.12], [1046.5, 0.24]];
+          notes.forEach(function (n) {
+            tone(n[0], t + n[1], 0.9, 0.5, 'sine');
+            tone(n[0] * 2, t + n[1], 0.6, 0.16, 'sine');
+            tone(n[0] * 3, t + n[1], 0.35, 0.06, 'triangle');
+          });
+          // финальный «дзынь» на высокой ноте
+          tone(2093, t + 0.4, 1.0, 0.22, 'sine');
+          tone(4186, t + 0.4, 0.5, 0.04, 'sine');
+        }
+        if (ctx.state === 'running') play();
+        else { try { ctx.resume().then(function () { if (ctx.state === 'running') play(); }); } catch (e) {} }
+      },
+      tick: function () {
+        if (!running() || muted) return;
+        var t = ctx.currentTime;
+        tone(1250, t, 0.09, 0.14, 'triangle');
+      },
+      setMuted: function (m) {
+        muted = m;
+        if (m) { if (loopTimer) { clearInterval(loopTimer); loopTimer = null; } if (ctx) stopDrone(); }
+        else if (loading) startLoop();
+      },
+      fx: function (kind) {            // звуки метеорита: beep / whoosh / boom
+        if (!running() || muted) return;
+        var t = ctx.currentTime;
+        function noise(dur, type, f0, f1, vol, up) {
+          var n = Math.ceil(ctx.sampleRate * dur), b = ctx.createBuffer(1, n, ctx.sampleRate), d = b.getChannelData(0), i;
+          for (i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+          var src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), gg = ctx.createGain();
+          src.buffer = b; f.type = type; f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + dur);
+          gg.gain.setValueAtTime(0.0001, t); gg.gain.exponentialRampToValueAtTime(vol, t + up); gg.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+          src.connect(f); f.connect(gg); gg.connect(master); src.start(t);
+        }
+        if (kind === 'beep') tone(1500, t, 0.09, 0.16, 'square');
+        else if (kind === 'whoosh') { noise(1.65, 'bandpass', 250, 3200, 0.5, 1.55); tone(60, t, 1.65, 0.25, 'sawtooth', 190); }
+        else if (kind === 'boom') { noise(2.2, 'lowpass', 4000, 80, 1, 0.015); tone(130, t, 1.1, 0.95, 'sine', 28); noise(1.4, 'bandpass', 900, 200, 0.35, 0.01); }
+      },
+      isMuted: function () { return muted; }
+    };
+  })();
+
+  var hintEl = $('hint');
+  function showHint() { hintEl.classList.add('show'); }
+  function hideHint() { hintEl.classList.remove('show'); }
+
+  var unlocked = false;
+  function onFirstTouch() {
+    if (unlocked) return; unlocked = true;
+    Snd.unlock();
+    document.removeEventListener('pointerdown', onFirstTouch, true);
+    document.removeEventListener('touchstart', onFirstTouch, true);
+  }
+  document.addEventListener('pointerdown', onFirstTouch, true);
+  document.addEventListener('touchstart', onFirstTouch, true);
+
+  /* ================= ГЛОБУС (самодельная анимация на canvas) ================= */
+  // Упрощённые контуры материков [долгота, широта] — для стилизованного точечного глобуса
+  var LAND = [
+    [[-168,66],[-156,71],[-125,70],[-95,72],[-80,68],[-62,60],[-55,52],[-66,44],[-76,38],[-81,31],[-80,25],[-83,29],[-90,29],[-97,26],[-97,20],[-88,16],[-83,9],[-78,8],[-86,13],[-95,16],[-105,20],[-110,23],[-115,30],[-124,40],[-124,48],[-135,58],[-150,60],[-165,60]], // Сев. Америка
+    [[-55,60],[-45,60],[-20,70],[-20,80],[-60,82],[-70,77],[-58,68]],                                                                                                                                                                            // Гренландия
+    [[-80,9],[-72,12],[-62,10],[-50,0],[-35,-6],[-40,-22],[-48,-28],[-58,-38],[-65,-42],[-68,-52],[-72,-52],[-74,-42],[-72,-30],[-70,-18],[-76,-14],[-81,-5],[-79,1]],                                                                          // Юж. Америка
+    [[-17,15],[-17,21],[-10,30],[-6,36],[10,37],[20,33],[32,31],[34,28],[43,12],[51,12],[40,-3],[40,-15],[35,-25],[27,-34],[18,-34],[12,-18],[9,-1],[9,4],[-8,4],[-15,11]],                                                                     // Африка
+    [[-9,37],[-9,43],[-2,44],[-5,48],[2,51],[8,54],[10,58],[5,62],[15,69],[28,71],[40,67],[40,55],[30,46],[28,41],[23,37],[18,40],[12,44],[8,44],[3,43],[0,38],[-5,36]],                                                                        // Европа
+    [[28,41],[40,41],[50,40],[55,45],[60,50],[60,70],[80,73],[100,77],[115,74],[140,72],[160,70],[180,68],[180,65],[165,60],[160,54],[155,59],[142,59],[135,54],[140,48],[130,42],[127,35],[122,40],[121,31],[120,24],[110,20],[108,15],[106,9],[100,13],[100,3],[104,1],[98,8],[93,19],[88,22],[80,15],[77,8],[73,18],[68,24],[57,25],[56,27],[48,30],[50,26],[56,22],[59,22],[52,16],[43,13],[35,28],[34,31],[36,36],[27,37]], // Азия
+    [[114,-22],[122,-18],[130,-12],[137,-12],[142,-11],[146,-19],[153,-26],[150,-37],[141,-38],[135,-34],[115,-34]],                                                                                                                              // Австралия
+    [[-5,50],[1,51],[0,55],[-3,59],[-6,57]],                                                                                                                                                                                                     // Британия
+    [[130,32],[135,34],[141,38],[142,44],[140,41],[136,36]]                                                                                                                                                                                      // Япония
+  ];
+  var D = Math.PI / 180;
+  function inPoly(lon, lat, poly) {
+    var c = false;
+    for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      var xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+      if (((yi > lat) !== (yj > lat)) && (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi)) c = !c;
+    }
+    return c;
+  }
+  var landPts = [], seaPts = [];
+  for (var la = -84; la <= 84; la += 4) {
+    var cl = Math.cos(la * D), step = 4 / Math.max(cl, 0.2);
+    for (var lo = -180; lo < 180; lo += step) {
+      var isLand = false;
+      for (var k = 0; k < LAND.length; k++) { if (inPoly(lo, la, LAND[k])) { isLand = true; break; } }
+      var p = { lo: lo * D, sl: Math.sin(la * D), cl: cl };
+      (isLand ? landPts : seaPts).push(p);
+    }
+  }
+
+  var canvas = $('globe'), g = canvas.getContext('2d');
+  var W = 0, H = 0, dpr = 1;
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 3);
+    var r = canvas.getBoundingClientRect();
+    W = Math.round(r.width * dpr); H = Math.round(r.height * dpr);
+    canvas.width = W; canvas.height = H;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  var rotL = 0, rotP = 0.35;                 // текущий центр глобуса (рад)
+  var tween = null;                          // анимация наведения на точку пользователя
+  var marker = null;                         // {lo, la}
+  var lastT = performance.now(), markerPx = null;
+
+  function ease(t) { return 1 - Math.pow(1 - t, 3); }
+
+  function focusOn(lat, lon) {
+    var targetL = lon * D;
+    var targetP = Math.max(-50, Math.min(50, lat)) * D;
+    var delta = ((targetL - rotL + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+    tween = { t0: performance.now(), dur: 1800, l0: rotL, p0: rotP, dl: delta + 2 * Math.PI, tp: targetP };
+    marker = { lo: targetL, la: lat * D };
+  }
+
+  function frame(now) {
+    var dt = Math.min(0.05, (now - lastT) / 1000); lastT = now;
+    if (tween) {
+      var k = Math.min(1, (now - tween.t0) / tween.dur), e = ease(k);
+      rotL = tween.l0 + tween.dl * e;
+      rotP = tween.p0 + (tween.tp - tween.p0) * e;
+      if (k >= 1) tween = null;
+    } else if (!marker) {
+      rotL += dt * 0.6;
+    }
+    draw(now);
+    requestAnimationFrame(frame);
+  }
+
+  function draw(now) {
+    if (!W) return;
+    var cx = W / 2, cy = H / 2, R = W * 0.36;
+    var sp0 = Math.sin(rotP), cp0 = Math.cos(rotP);
+    g.clearRect(0, 0, W, H);
+
+    // атмосфера (мягко пульсирует)
+    var pulse = 0.5 + 0.5 * Math.sin(now / 900);
+    var atm = g.createRadialGradient(cx, cy, R * 0.92, cx, cy, R * 1.45);
+    atm.addColorStop(0, 'rgba(60,225,255,' + (0.50 + 0.16 * pulse) + ')'); atm.addColorStop(0.4, 'rgba(60,160,255,.20)'); atm.addColorStop(1, 'rgba(60,160,255,0)');
+    g.fillStyle = atm; g.beginPath(); g.arc(cx, cy, R * 1.45, 0, 7); g.fill();
+
+    // тело шара
+    var body = g.createRadialGradient(cx - R * .35, cy - R * .4, R * .1, cx, cy, R);
+    body.addColorStop(0, '#2a68c4'); body.addColorStop(.6, '#143a80'); body.addColorStop(1, '#081b44');
+    g.fillStyle = body; g.beginPath(); g.arc(cx, cy, R, 0, 7); g.fill();
+
+    // точки: океан → суша
+    var ds = Math.max(1.3, dpr * 1.2), dl = Math.max(2.1, dpr * 1.9), i, p, dlo, cosc, x, y;
+    g.fillStyle = '#6fd0ff';
+    for (i = 0; i < seaPts.length; i++) {
+      p = seaPts[i]; dlo = p.lo - rotL;
+      cosc = sp0 * p.sl + cp0 * p.cl * Math.cos(dlo);
+      if (cosc <= 0.02) continue;
+      x = p.cl * Math.sin(dlo); y = cp0 * p.sl - sp0 * p.cl * Math.cos(dlo);
+      g.globalAlpha = 0.24 + 0.42 * cosc;
+      g.fillRect(cx + R * x - ds / 2, cy - R * y - ds / 2, ds, ds);
+    }
+    for (i = 0; i < landPts.length; i++) {
+      p = landPts[i]; dlo = p.lo - rotL;
+      cosc = sp0 * p.sl + cp0 * p.cl * Math.cos(dlo);
+      if (cosc <= 0.02) continue;
+      x = p.cl * Math.sin(dlo); y = cp0 * p.sl - sp0 * p.cl * Math.cos(dlo);
+      g.fillStyle = cosc > 0.7 ? '#b8ff6a' : cosc > 0.35 ? '#3dff9c' : '#18d8b4';
+      g.globalAlpha = 0.6 + 0.4 * cosc;
+      g.fillRect(cx + R * x - dl / 2, cy - R * y - dl / 2, dl, dl);
+    }
+    g.globalAlpha = 1;
+
+    // свечение у края и блик от «солнца»
+    var rim = g.createRadialGradient(cx, cy, R * 0.62, cx, cy, R);
+    rim.addColorStop(0, 'rgba(90,210,255,0)'); rim.addColorStop(1, 'rgba(90,210,255,.40)');
+    g.fillStyle = rim; g.beginPath(); g.arc(cx, cy, R, 0, 7); g.fill();
+    var hl = g.createRadialGradient(cx - R * .4, cy - R * .45, 0, cx - R * .4, cy - R * .45, R * .75);
+    hl.addColorStop(0, 'rgba(255,255,255,.28)'); hl.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = hl; g.beginPath(); g.arc(cx, cy, R, 0, 7); g.fill();
+
+    // контур
+    g.lineWidth = 2 * dpr; g.strokeStyle = 'rgba(130,240,255,.9)';
+    g.beginPath(); g.arc(cx, cy, R, 0, 7); g.stroke();
+
+    // орбитальное кольцо со «спутником»
+    g.save();
+    g.translate(cx, cy); g.rotate(-0.38);
+    g.lineWidth = 1.2 * dpr; g.strokeStyle = 'rgba(120,235,255,.55)';
+    g.beginPath(); g.ellipse(0, 0, R * 1.22, R * 0.36, 0, 0, 7); g.stroke();
+    var a = now / 1400;
+    var sx = Math.cos(a) * R * 1.22, sy = Math.sin(a) * R * 0.36;
+    var sg = g.createRadialGradient(sx, sy, 0, sx, sy, 9 * dpr);
+    sg.addColorStop(0, 'rgba(255,255,255,.95)'); sg.addColorStop(1, 'rgba(34,211,238,0)');
+    g.fillStyle = sg; g.beginPath(); g.arc(sx, sy, 9 * dpr, 0, 7); g.fill();
+    g.restore();
+
+    // маркер местоположения
+    if (marker) {
+      var mlo = marker.lo - rotL, mc = sp0 * Math.sin(marker.la) + cp0 * Math.cos(marker.la) * Math.cos(mlo);
+      if (mc > 0.02) {
+        var mx = cx + R * Math.cos(marker.la) * Math.sin(mlo);
+        var my = cy - R * (cp0 * Math.sin(marker.la) - sp0 * Math.cos(marker.la) * Math.cos(mlo));
+        markerPx = { x: mx, y: my };
+        var ph = (now % 1600) / 1600;
+        g.lineWidth = 2 * dpr; g.strokeStyle = 'rgba(255,255,255,' + (0.8 * (1 - ph)) + ')';
+        g.beginPath(); g.arc(mx, my, (4 + 20 * ph) * dpr, 0, 7); g.stroke();
+        g.fillStyle = '#ffffff'; g.beginPath(); g.arc(mx, my, 4 * dpr, 0, 7); g.fill();
+        g.fillStyle = '#ff2d55'; g.beginPath(); g.arc(mx, my, 2.6 * dpr, 0, 7); g.fill();
+      }
+    }
+  }
+  requestAnimationFrame(frame);
+
+  /* ================= ЛОГИКА ================= */
+  var state = { data: null };
+  var elTitle = $('title'), elSub = $('sub'), elCheck = $('check'), elCard = $('card'), elErr = $('error');
+
+  function maskHtml() {
+    var grp = '<span class="g"><i class="d"></i><i class="d"></i><i class="d"></i></span>';
+    return [grp, grp, grp, grp].join('<i class="s"></i>');
+  }
+  // Смещение часового пояса от UTC (в минутах) на текущий момент
+  function tzOffset(tz) {
+    try {
+      var now = new Date();
+      var parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' }).formatToParts(now);
+      var v = {}; parts.forEach(function (p) { v[p.type] = parseInt(p.value, 10); });
+      var asUtc = Date.UTC(v.year, v.month - 1, v.day, v.hour, v.minute, v.second);
+      return Math.round((asUtc - Math.floor(now.getTime() / 1000) * 1000) / 60000);
+    } catch (e) { return null; }
+  }
+  // VPN: флаг от сервера ИЛИ часовой пояс IP не совпадает с часовым поясом устройства
+  function looksLikeVpn(d) {
+    if (d.vpn) return true;
+    try {
+      var local = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (local && d.timezone) {
+        var a = tzOffset(local), b = tzOffset(d.timezone);
+        if (a !== null && b !== null && a !== b) return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+  function setText(id, v) { $(id).textContent = v ? v : '—'; }
+
+  function setLoading() {
+    elErr.classList.remove('show');
+    $('vpn').classList.remove('show');
+    elCard.classList.remove('show');
+    elCheck.classList.remove('show');
+    marker = null; markerPx = null; tween = null; Boom.reset();
+    elTitle.innerHTML = 'Определяем ваш IP<span class="dots"></span>';
+    elSub.textContent = 'Подключаемся к сети';
+  }
+
+  function showError(text) {
+    elCheck.classList.remove('show');
+    elTitle.textContent = 'Не получилось';
+    elSub.textContent = '';
+    $('errtext').textContent = text;
+    elErr.classList.add('show');
+    haptic('notify', 'error');
+  }
+
+  var clockTimer = null;
+  function showResult(d) {
+    state.data = d;
+    elTitle.textContent = 'IP определён';
+    var vpn = looksLikeVpn(d);
+    $('vpn').classList.toggle('show', vpn);
+    elSub.textContent = vpn ? 'Обнаружен VPN или прокси' : (d.geoFailed ? 'Данные о местоположении получить не удалось' : 'Данные получены');
+    elCheck.classList.add('show');
+    $('ip').innerHTML = maskHtml();
+    setText('f-country', d.country ? ((d.flag ? d.flag + ' ' : '') + d.country) : null);
+    setText('f-region', d.region);
+    setText('f-city', d.city);
+    setText('f-tz', d.timezone);
+    setText('f-isp', d.isp);
+    setText('f-asn', d.asn);
+    setText('f-type', d.type);
+    clearInterval(clockTimer);
+    function tickClock() {
+      try { $('f-time').textContent = new Intl.DateTimeFormat('ru-RU', { timeZone: d.timezone, hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date()); }
+      catch (e) { $('f-time').textContent = '—'; }
+    }
+    if (d.timezone) { tickClock(); clockTimer = setInterval(tickClock, 1000); } else { $('f-time').textContent = '—'; }
+    if (typeof d.lat === 'number' && typeof d.lon === 'number') focusOn(d.lat, d.lon);
+    Snd.success();
+    haptic('notify', 'success');
+    setTimeout(function () { elCard.classList.add('show'); }, 650);
+  }
+
+  async function fetchIp() {
+    var initData = tg && tg.initData;
+    if (!initData) { var e0 = new Error('open-in-telegram'); e0.code = 'tg'; throw e0; }
+    var res = await fetch('/api/ip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initData: initData })
+    });
+    var body = {};
+    try { body = await res.json(); } catch (e) {}
+    if (res.status === 403) { var e1 = new Error('consent'); e1.code = 'consent'; throw e1; }
+    if (res.status === 429) { var e2 = new Error('rate'); e2.code = 'rate'; throw e2; }
+    if (!res.ok || !body.ip) { var e3 = new Error(body.error || 'fail'); e3.code = 'fail'; throw e3; }
+    return body;
+  }
+
+  async function run() {
+    setLoading();
+    Snd.startLoading();
+    if (!Snd.isRunning()) setTimeout(function () { if (!Snd.isRunning() && !Snd.isMuted()) showHint(); }, 600);
+    var t0 = Date.now(), data = null, err = null;
+    try { data = await fetchIp(); } catch (e) { err = e; }
+    await sleep(Math.max(0, 2600 - (Date.now() - t0)));   // чтобы анимация успела «сыграть»
+    Snd.stopLoading();
+    hideHint();
+    if (err) {
+      var msg = 'Не удалось определить IP. Проверьте соединение и попробуйте ещё раз.';
+      if (err.code === 'tg') msg = 'Откройте это приложение из Telegram — через кнопку в боте.';
+      else if (err.code === 'consent') msg = 'Сначала примите пользовательское соглашение в боте (команда /start).';
+      else if (err.code === 'rate') msg = 'Слишком часто. Подождите пару секунд и повторите.';
+      return showError(msg);
+    }
+    showResult(data);
+  }
+
+  /* ---- копирование ---- */
+  var toastEl = $('toast'), toastTimer = null;
+  function toast(t) {
+    toastEl.textContent = t; toastEl.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 1800);
+  }
+  function buildText(d) {
+    var lines = ['IP: ' + d.ip];
+    if (d.country) lines.push('Страна: ' + d.country);
+    if (d.region) lines.push('Регион: ' + d.region);
+    if (d.city) lines.push('Город: ' + d.city);
+    if (d.timezone) lines.push('Часовой пояс: ' + d.timezone);
+    if (d.isp) lines.push('Провайдер: ' + d.isp);
+    if (d.asn) lines.push('ASN: ' + d.asn);
+    if (d.type) lines.push('Тип: ' + d.type);
+    if (looksLikeVpn(d)) lines.push('Внимание: возможно, используется VPN/прокси');
+    return lines.join('\n');
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+    document.body.appendChild(ta); ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+    return ok;
+  }
+  $('copy').addEventListener('click', async function () {
+    if (!state.data) return;
+    var text = buildText(state.data), ok = false;
+    try { await navigator.clipboard.writeText(text); ok = true; } catch (e) { ok = fallbackCopy(text); }
+    if (ok) { toast('Скопировано ✓'); Snd.tick(); haptic('impact', 'light'); Boom.strike(); }
+    else { toast('Не удалось скопировать'); haptic('notify', 'error'); }
+  });
+
+  $('recheck').addEventListener('click', function () { run(); });
+
+  $('retry').addEventListener('click', function () {
+    if (tg && !tg.initData) { try { tg.close(); } catch (e) {} return; }
+    run();
+  });
+
+  /* ================= МЕТЕОРИТ: удар в точку IP, планета разлетается ================= */
+  var Boom = (function () {
+    var fb = $('fxb'), ft = $('fxt'), cb = fb.getContext('2d'), cf = ft.getContext('2d'), bam = $('bam'), hint2 = $('hint2'), root = document.documentElement;
+    var still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var w = 0, h = 0, dp = 1, busy = false, broken = false, shards = [], parts = [], rings = [], meteor = null, ret = null, re = null;
+    var flash = 0, flashAt = null, on = false, last = 0, token = 0, timers = [], saved = null;
+    function rnd(a, b) { return a + Math.random() * (b - a); }
+    function size() {
+      dp = Math.min(window.devicePixelRatio || 1, 2); w = window.innerWidth; h = window.innerHeight;
+      fb.width = ft.width = Math.round(w * dp); fb.height = ft.height = Math.round(h * dp);
+    }
+    size(); window.addEventListener('resize', size);
+    function later(fn, ms) { var t = token; timers.push(setTimeout(function () { if (t === token) fn(); }, ms)); }
+
+    function sprite(c, a) {
+      var sc = document.createElement('canvas'), x, gr; sc.width = sc.height = 48; x = sc.getContext('2d');
+      gr = x.createRadialGradient(24, 24, 0, 24, 24, 24);
+      gr.addColorStop(0, 'rgba(' + c + ',' + a + ')'); gr.addColorStop(.45, 'rgba(' + c + ',' + a * .5 + ')'); gr.addColorStop(1, 'rgba(' + c + ',0)');
+      x.fillStyle = gr; x.fillRect(0, 0, 48, 48); return sc;
+    }
+    var FIRE = [[255, 248, 215], [255, 212, 90], [255, 140, 35], [230, 70, 15], [120, 28, 10]].map(function (c) { return sprite(c, 1); });
+    var SMOKE = sprite([95, 85, 85], .6);
+    // настоящий астероид: неровный камень, кратеры, крапинки, светящиеся лавовые трещины
+    var ROCK = (function () {
+      var c = document.createElement('canvas'), x, i, N = 22, pts = [], an, rr, C = 80;
+      c.width = c.height = 160; x = c.getContext('2d');
+      for (i = 0; i < N; i++) { an = i / N * 6.2832; rr = 56 * (.8 + .2 * Math.random() + .07 * Math.sin(an * 3 + 1)); pts.push([C + Math.cos(an) * rr, C + Math.sin(an) * rr * .92]); }
+      function path() { x.beginPath(); pts.forEach(function (q, k) { if (k) x.lineTo(q[0], q[1]); else x.moveTo(q[0], q[1]); }); x.closePath(); }
+      path();
+      var g = x.createRadialGradient(C - 20, C - 24, 6, C, C, 72); g.addColorStop(0, '#b09478'); g.addColorStop(.45, '#715843'); g.addColorStop(1, '#27190f');
+      x.fillStyle = g; x.fill(); x.save(); x.clip();
+      for (i = 0; i < 110; i++) { x.fillStyle = Math.random() < .5 ? 'rgba(0,0,0,.2)' : 'rgba(255,230,200,.1)'; x.beginPath(); x.arc(C + rnd(-60, 60), C + rnd(-60, 60), rnd(1, 3.5), 0, 7); x.fill(); }
+      [[-18, -14, 17], [22, 6, 13], [-4, 26, 10], [26, -26, 8], [-32, 16, 8], [8, -38, 6]].forEach(function (k) {
+        var X = C + k[0], Y = C + k[1], r = k[2], cg = x.createRadialGradient(X + r * .25, Y + r * .25, r * .1, X, Y, r);
+        cg.addColorStop(0, 'rgba(18,9,5,.9)'); cg.addColorStop(.8, 'rgba(40,24,16,.6)'); cg.addColorStop(1, 'rgba(210,175,140,.4)');
+        x.fillStyle = cg; x.beginPath(); x.arc(X, Y, r, 0, 7); x.fill();
+        x.strokeStyle = 'rgba(235,205,170,.45)'; x.lineWidth = 1.6; x.beginPath(); x.arc(X - r * .1, Y - r * .1, r, 3.4, 5.2); x.stroke();
+      });
+      x.strokeStyle = '#ff8a22'; x.lineWidth = 2.4; x.shadowColor = '#ff5a00'; x.shadowBlur = 9;
+      [[[-42, -5], [-24, 3], [-10, -6], [5, 5], [12, 18]], [[10, 34], [16, 18], [30, 14], [46, 22]], [[-10, -44], [-3, -28], [9, -22], [20, -30]]].forEach(function (cr) {
+        x.beginPath(); cr.forEach(function (q, k) { if (k) x.lineTo(C + q[0], C + q[1]); else x.moveTo(C + q[0], C + q[1]); }); x.stroke();
+      });
+      x.shadowBlur = 0; x.restore();
+      path(); x.lineWidth = 3; x.strokeStyle = 'rgba(255,150,60,.8)'; x.stroke();
+      return c;
+    })();
+    // спутник, нарисованный вручную
+    var SATC = (function () {
+      var c = document.createElement('canvas'), x; c.width = c.height = 80; x = c.getContext('2d');
+      x.lineWidth = 1.2;
+      [[2, 30, 26, 20], [52, 30, 26, 20]].forEach(function (q) {
+        x.fillStyle = '#2b6fd6'; x.strokeStyle = '#a9d4ff'; x.fillRect(q[0], q[1], q[2], q[3]); x.strokeRect(q[0], q[1], q[2], q[3]);
+        x.beginPath(); for (var i = 1; i < 4; i++) { x.moveTo(q[0] + q[2] * i / 4, q[1]); x.lineTo(q[0] + q[2] * i / 4, q[1] + q[3]); }
+        x.moveTo(q[0], q[1] + q[3] / 2); x.lineTo(q[0] + q[2], q[1] + q[3] / 2); x.stroke();
+      });
+      x.fillStyle = '#d7dde8'; x.fillRect(28, 26, 24, 28); x.strokeStyle = '#6b7788'; x.strokeRect(28, 26, 24, 28);
+      x.fillStyle = '#f2b84b'; x.fillRect(28, 36, 24, 8);
+      x.strokeStyle = '#d7dde8'; x.lineWidth = 2; x.beginPath(); x.moveTo(40, 26); x.lineTo(40, 16); x.stroke();
+      x.fillStyle = '#e8edf5'; x.beginPath(); x.arc(40, 14, 6, Math.PI, 0); x.fill();
+      return c;
+    })();
+    function P(x, y, vx, vy, life, s0, s1, k) { parts.push({ x: x, y: y, vx: vx, vy: vy, a: 0, l: life, s0: s0, s1: s1, k: k }); }   // k: 0 огонь, 1 дым, 2 искра
+
+    function target() {
+      var r = canvas.getBoundingClientRect();
+      return { x: r.left + (markerPx ? markerPx.x / dpr : r.width / 2), y: r.top + (markerPx ? markerPx.y / dpr : r.height / 2) };
+    }
+    function clip(poly, nx, ny, d) {   // оставляем часть, где n·p <= d
+      var out = [], i, a, b, da, db, t;
+      for (i = 0; i < poly.length; i++) {
+        a = poly[i]; b = poly[(i + 1) % poly.length];
+        da = nx * a[0] + ny * a[1] - d; db = nx * b[0] + ny * b[1] - d;
+        if (da <= 0) out.push(a);
+        if ((da < 0 && db > 0) || (da > 0 && db < 0)) { t = da / (da - db); out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]); }
+      }
+      return out;
+    }
+
+    function strike() {
+      if (still) return;
+      if (broken && !re) { nudge(); toast('Скопировано ✓ Планету уже не спасти'); return; }
+      if (busy || broken) return;
+      busy = true;
+      var r = canvas.getBoundingClientRect(), d = 0;
+      if (r.top < -r.height * .3) { try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); } d = 450; }
+      later(go, d);
+    }
+    function go() {
+      saved = [elTitle.innerHTML, elSub.textContent];
+      elTitle.textContent = 'Осторожно!'; elSub.textContent = 'К вашей точке летит астероид';
+      ret = { t0: performance.now() }; kick();
+      Snd.fx('beep'); haptic('impact', 'light');
+      later(function () { Snd.fx('beep'); haptic('impact', 'light'); }, 200);
+      later(function () { Snd.fx('beep'); haptic('impact', 'medium'); }, 400);
+      later(launch, 650);
+    }
+    function launch() {
+      var t = target(), sd = Math.random() < .5 ? -1 : 1, ang = rnd(.14, .3), ca = Math.cos(ang), ux = -sd * ca, uy = Math.sin(ang);
+      var L = (sd < 0 ? t.x + 90 : w - t.x + 90) / ca;   // старт чуть за краем экрана
+      meteor = { t0: performance.now(), sx: t.x - ux * L, sy: t.y - uy * L, ux: ux, uy: uy, rot: 0, x: 0, y: 0, r: 14, k: 0 };
+      ret = null; Snd.fx('whoosh');
+    }
+
+    function impact(o) {
+      var i, a, sp, m = meteor;
+      flash = 1; flashAt = o;
+      rings = [{ x: o.x, y: o.y, r: 8, v: 560, a: 1, c: '255,190,80' }, { x: o.x, y: o.y, r: 4, v: 340, a: 1, c: '255,255,255' }];
+      for (i = 0; i < 120; i++) { a = rnd(0, 6.283); sp = rnd(50, 470); P(o.x, o.y, Math.cos(a) * sp, Math.sin(a) * sp, rnd(.5, 1.5), rnd(9, 22), rnd(2, 7), 0); }
+      for (i = 0; i < 46; i++) { a = rnd(0, 6.283); sp = rnd(220, 760); P(o.x, o.y, Math.cos(a) * sp, Math.sin(a) * sp, rnd(.4, 1.1), 0, 0, 2); }
+      for (i = 0; i < 24; i++) { a = rnd(0, 6.283); sp = rnd(15, 130); P(o.x, o.y, Math.cos(a) * sp, Math.sin(a) * sp, rnd(1.4, 2.6), 12, 48, 1); }
+      split(o, m.ux, m.uy);
+      canvas.style.visibility = 'hidden'; fb.style.pointerEvents = 'auto';
+      broken = true; busy = false;
+      root.classList.add('quake'); later(function () { root.classList.remove('quake'); }, 750);
+      bam.textContent = ['БАБАХ!', 'ЖАХ!', 'БДЫЩ!', 'КРАХ!'][(Math.random() * 4) | 0];
+      bam.style.left = Math.max(90, Math.min(w - 90, o.x)) + 'px'; bam.style.top = Math.max(60, o.y - 40) + 'px';
+      bam.classList.remove('show'); void bam.offsetWidth; bam.classList.add('show');
+      Snd.fx('boom'); haptic('impact', 'heavy'); later(function () { haptic('notify', 'warning'); }, 180);
+      elTitle.textContent = 'Бабах.'; elSub.textContent = 'Планета временно недоступна';
+      later(function () { hint2.classList.add('show'); }, 1300);
+      later(function () { hint2.classList.remove('show'); }, 5200);
+      later(function () { if (saved) { elTitle.innerHTML = saved[0]; elSub.textContent = saved[1]; saved = null; } }, 3800);
+    }
+
+    // разбиваем снимок глобуса на осколки (ячейки Вороного), больше мелочи у места удара
+    function split(o, ux, uy) {
+      var snap = document.createElement('canvas'), r = canvas.getBoundingClientRect(), cw = canvas.width, ch = canvas.height;
+      snap.width = cw; snap.height = ch; snap.getContext('2d').drawImage(canvas, 0, 0);
+      var R = cw * .36, ix = (o.x - r.left) * dpr - cw / 2, iy = (o.y - r.top) * dpr - ch / 2, S = [], n = 0, rc = r.left + r.width / 2, rt = r.top + r.height / 2;
+      var j, a, rr, x, y, ok, near;
+      while (S.length < 17 && n++ < 600) {
+        near = S.length < 7; a = rnd(0, 6.283); rr = (near ? rnd(.05, .6) : Math.sqrt(Math.random())) * R;
+        x = (near ? ix : 0) + Math.cos(a) * rr; y = (near ? iy : 0) + Math.sin(a) * rr; ok = Math.hypot(x, y) < R * 1.02;
+        for (j = 0; ok && j < S.length; j++) if (Math.hypot(S[j][0] - x, S[j][1] - y) < R * .27) ok = false;
+        if (ok) S.push([x, y]);
+      }
+      S.forEach(function (sd, si) {
+        var poly = [[-2 * R, -2 * R], [2 * R, -2 * R], [2 * R, 2 * R], [-2 * R, 2 * R]], q, k, th, j2;
+        for (j2 = 0; j2 < S.length && poly.length > 2; j2++) if (j2 !== si) {
+          q = S[j2]; poly = clip(poly, q[0] - sd[0], q[1] - sd[1], (q[0] * q[0] + q[1] * q[1] - sd[0] * sd[0] - sd[1] * sd[1]) / 2);
+        }
+        for (k = 0; k < 40 && poly.length > 2; k++) { th = k * Math.PI / 20; poly = clip(poly, Math.cos(th), Math.sin(th), R * 1.003); }
+        if (poly.length < 3) return;
+        var cx0 = 0, cy0 = 0, mnx = 1e9, mny = 1e9, mxx = -1e9, mxy = -1e9, pad = 3 * dpr, rad = 0;
+        poly.forEach(function (pt) { cx0 += pt[0]; cy0 += pt[1]; mnx = Math.min(mnx, pt[0]); mxx = Math.max(mxx, pt[0]); mny = Math.min(mny, pt[1]); mxy = Math.max(mxy, pt[1]); });
+        cx0 /= poly.length; cy0 /= poly.length;
+        poly.forEach(function (pt) { rad = Math.max(rad, Math.hypot(pt[0] - cx0, pt[1] - cy0)); });
+        var E = [];
+        poly.forEach(function (pt, i2) { var q2 = poly[(i2 + 1) % poly.length]; if (Math.hypot((pt[0] + q2[0]) / 2, (pt[1] + q2[1]) / 2) < R * .985) E.push([pt[0] - cx0, pt[1] - cy0, q2[0] - cx0, q2[1] - cy0]); });
+        var b = document.createElement('canvas'), x2, sg;
+        b.width = Math.ceil(mxx - mnx + 2 * pad); b.height = Math.ceil(mxy - mny + 2 * pad); x2 = b.getContext('2d');
+        x2.translate(pad - mnx, pad - mny);
+        x2.beginPath(); poly.forEach(function (pt, i2) { if (i2) x2.lineTo(pt[0], pt[1]); else x2.moveTo(pt[0], pt[1]); }); x2.closePath();
+        x2.save(); x2.clip(); x2.drawImage(snap, -cw / 2, -ch / 2);
+        sg = x2.createLinearGradient(mnx, mny, mxx, mxy); sg.addColorStop(0, 'rgba(0,0,0,' + rnd(0, .1) + ')'); sg.addColorStop(1, 'rgba(0,0,0,' + rnd(.15, .45) + ')');
+        x2.fillStyle = sg; x2.fillRect(mnx - pad, mny - pad, mxx - mnx + 2 * pad, mxy - mny + 2 * pad);
+        x2.beginPath(); E.forEach(function (e) { x2.moveTo(e[0] + cx0, e[1] + cy0); x2.lineTo(e[2] + cx0, e[3] + cy0); });
+        x2.lineWidth = 2.6 * dpr; x2.strokeStyle = 'rgba(35,14,8,.9)'; x2.stroke(); x2.restore();
+        var sx = rc + cx0 / dpr, sy = rt + cy0 / dpr, dx = sx - o.x, dy = sy - o.y, dd = Math.hypot(dx, dy) || 1, Rc = R / dpr;
+        var spd = 260 * Math.max(.15, 1.2 - Math.min(1, dd / (Rc * 1.8))) + rnd(30, 120);
+        shards.push({ b: b, ox: cx0 - mnx + pad, oy: cy0 - mny + pad, cx: cx0, cy: cy0, rad: rad / dpr,
+          e: E.map(function (e) { return e.map(function (v) { return v / dpr; }); }),
+          x: sx, y: sy, vx: dx / dd * spd + ux * rnd(40, 90), vy: dy / dd * spd + uy * rnd(40, 90),
+          a: 0, w: rnd(-5, 5), ds: rnd(8, 26), dw: rnd(-.7, .7) || .3, heat: 1, ph: rnd(0, 6.28) });
+      });
+      // спутник с орбиты тоже улетает
+      var sa = performance.now() / 1400, qx = Math.cos(sa) * R * 1.22, qy = Math.sin(sa) * R * .36, c38 = Math.cos(-.38), s38 = Math.sin(-.38);
+      var X = qx * c38 - qy * s38, Y = qx * s38 + qy * c38, nm = Math.hypot(X, Y) || 1;
+      shards.push({ em: 1, x: rc + X / dpr, y: rt + Y / dpr, vx: X / nm * rnd(200, 300), vy: Y / nm * rnd(200, 300) - 40, a: 0, w: 6, ds: 18, dw: 1.4, heat: 0, ph: 0, rad: 14 });
+    }
+
+    function nudge() {
+      shards.forEach(function (s) { var a = rnd(0, 6.283), p = rnd(140, 300); s.vx += Math.cos(a) * p; s.vy += Math.sin(a) * p; s.w += rnd(-5, 5); if (!s.em) s.heat = Math.max(s.heat, .6); });
+      haptic('impact', 'medium');
+    }
+    // тап по осколку — пинок
+    fb.addEventListener('pointerdown', function (e) {
+      if (re) return;
+      var best = null, bd = 1e9, d;
+      shards.forEach(function (s) { d = Math.hypot(e.clientX - s.x, e.clientY - s.y); if (d < s.rad * 1.15 && d < bd) { best = s; bd = d; } });
+      if (!best) return;
+      var a = Math.atan2(best.y - e.clientY, best.x - e.clientX), p = rnd(260, 420);
+      best.vx += Math.cos(a) * p; best.vy += Math.sin(a) * p; best.w += rnd(-6, 6); if (!best.em) best.heat = 1;
+      Snd.tick(); haptic('impact', 'light');
+    });
+
+    // повторная проверка: осколки собираются обратно в планету
+    function reset() {
+      token++; timers.forEach(clearTimeout); timers = [];
+      busy = false; ret = null; meteor = null; rings = []; parts = []; flash = 0; saved = null;
+      root.classList.remove('quake'); bam.classList.remove('show'); hint2.classList.remove('show');
+      if (!broken) return;
+      shards = shards.filter(function (s) { return !s.em; });
+      re = { t0: performance.now(), f: shards.map(function (s) { return { x: s.x, y: s.y, a: s.a, h: Math.round(s.a / 6.2832) * 6.2832 }; }) };
+      kick();
+    }
+
+    function alive() { return shards.length || parts.length || meteor || ret || rings.length || flash > 0 || re; }
+    function kick() { if (!on) { on = true; last = performance.now(); requestAnimationFrame(loop); } }
+
+    function loop() {
+      var now = performance.now(), dt = Math.max(0, Math.min(.05, (now - last) / 1000)), i, s, p, u, sz, m, t, o;
+      last = now;
+
+      // ---- логика ----
+      if (meteor) {
+        m = meteor; t = target();
+        var k = Math.max(0, Math.min(1, (now - m.t0) / 1700)), kk = Math.pow(k, 1.35);
+        m.x = m.sx + (t.x - m.sx) * kk; m.y = m.sy + (t.y - m.sy) * kk; m.k = k; m.r = 14 + 22 * k; m.rot += dt * 2.5;
+        for (i = 0; i < 6; i++) P(m.x - m.ux * m.r * .5 + rnd(-.5, .5) * m.r, m.y - m.uy * m.r * .5 + rnd(-.5, .5) * m.r, -m.ux * rnd(40, 180) + rnd(-50, 50), -m.uy * rnd(40, 180) + rnd(-50, 50), rnd(.3, .75), m.r * 1.1, m.r * .3, 0);
+        for (i = 0; i < 2; i++) P(m.x - m.ux * m.r, m.y - m.uy * m.r, rnd(-30, 30), rnd(-30, 30), rnd(.9, 1.5), m.r * .7, m.r * 1.8, 1);
+        if (k >= 1) { impact(t); }
+      }
+      if (re) {
+        var kr = Math.max(0, Math.min(1, (now - re.t0) / 1100)), e = 1 - Math.pow(1 - kr, 3), r = canvas.getBoundingClientRect(), hx = r.left + r.width / 2, hy = r.top + r.height / 2;
+        shards.forEach(function (sh, i2) { var f = re.f[i2]; sh.x = f.x + (hx + sh.cx / dpr - f.x) * e; sh.y = f.y + (hy + sh.cy / dpr - f.y) * e; sh.a = f.a + (f.h - f.a) * e; sh.heat = 0; });
+        if (kr >= 1) { shards = []; re = null; broken = false; canvas.style.visibility = ''; fb.style.pointerEvents = 'none'; }
+      } else {
+        for (i = 0; i < shards.length; i++) {
+          s = shards[i];
+          var sp = Math.hypot(s.vx, s.vy);
+          if (sp > s.ds) { u = 1 - Math.min(1, dt * 1.3) * (1 - s.ds / sp); s.vx *= u; s.vy *= u; }
+          s.w += (s.dw - s.w) * Math.min(1, dt * 1.2);
+          s.x += s.vx * dt; s.y += s.vy * dt; s.a += s.w * dt;
+          var mg = s.rad * .7;
+          if (s.x < mg) { s.x = mg; s.vx = Math.abs(s.vx); } else if (s.x > w - mg) { s.x = w - mg; s.vx = -Math.abs(s.vx); }
+          if (s.y < mg) { s.y = mg; s.vy = Math.abs(s.vy); } else if (s.y > h - mg) { s.y = h - mg; s.vy = -Math.abs(s.vy); }
+          if (s.heat > 0) {
+            s.heat = Math.max(0, s.heat - dt / 3.8);
+            if (s.heat > .3) {
+              P(s.x + rnd(-.6, .6) * s.rad, s.y + rnd(-.6, .6) * s.rad, s.vx * .1 + rnd(-25, 25), s.vy * .1 + rnd(-25, 25), rnd(.35, .8), 7, 2, 0);
+              if (Math.random() < .35) P(s.x, s.y, rnd(-20, 20), rnd(-20, 20), rnd(.8, 1.3), 6, 20, 1);
+            }
+          }
+        }
+      }
+
+      // ---- нижний слой: осколки ----
+      cb.setTransform(dp, 0, 0, dp, 0, 0); cb.clearRect(0, 0, w, h);
+      for (i = 0; i < shards.length; i++) {
+        s = shards[i];
+        cb.save(); cb.translate(s.x, s.y + (re ? 0 : Math.sin(now / 900 + s.ph) * 3)); cb.rotate(s.a);
+        if (s.em) { cb.drawImage(SATC, -22, -22, 44, 44); }
+        else {
+          cb.drawImage(s.b, -s.ox / dpr, -s.oy / dpr, s.b.width / dpr, s.b.height / dpr);
+          if (s.heat > .02) {
+            cb.globalAlpha = Math.min(1, s.heat * 1.2); cb.beginPath();
+            s.e.forEach(function (ed) { cb.moveTo(ed[0], ed[1]); cb.lineTo(ed[2], ed[3]); });
+            cb.lineCap = 'round'; cb.strokeStyle = 'rgba(255,110,25,.6)'; cb.lineWidth = 5; cb.stroke();
+            cb.strokeStyle = 'rgba(255,228,150,.95)'; cb.lineWidth = 1.6; cb.stroke();
+          }
+        }
+        cb.restore();
+      }
+
+      // ---- верхний слой: прицел, вспышка, огонь, метеорит ----
+      cf.setTransform(dp, 0, 0, dp, 0, 0); cf.clearRect(0, 0, w, h);
+      if (ret) {
+        t = target(); u = Math.max(0, Math.min(1, (now - ret.t0) / 650)); var rr = 48 - 30 * u * u;
+        cf.strokeStyle = 'rgba(255,70,70,.95)'; cf.lineWidth = 2; cf.fillStyle = 'rgba(255,50,50,' + (.1 + .1 * Math.sin(now / 50)) + ')';
+        cf.beginPath(); cf.arc(t.x, t.y, rr, 0, 7); cf.fill(); cf.stroke();
+        cf.beginPath();
+        for (i = 0; i < 4; i++) { var ag = u * 3 + i * 1.5708; cf.moveTo(t.x + Math.cos(ag) * (rr - 8), t.y + Math.sin(ag) * (rr - 8)); cf.lineTo(t.x + Math.cos(ag) * (rr + 10), t.y + Math.sin(ag) * (rr + 10)); }
+        cf.stroke();
+      }
+      if (flash > 0) {
+        flash -= dt * 3;
+        if (flash > 0) {
+          o = flashAt; var r2 = 60 + 260 * (1 - flash), fg = cf.createRadialGradient(o.x, o.y, 0, o.x, o.y, r2);
+          fg.addColorStop(0, 'rgba(255,255,235,' + flash + ')'); fg.addColorStop(.45, 'rgba(255,170,60,' + flash * .6 + ')'); fg.addColorStop(1, 'rgba(255,90,20,0)');
+          cf.fillStyle = fg; cf.fillRect(0, 0, w, h); cf.fillStyle = 'rgba(255,248,224,' + flash * .35 + ')'; cf.fillRect(0, 0, w, h);
+        }
+      }
+      for (i = parts.length - 1; i >= 0; i--) {
+        p = parts[i]; p.a += dt;
+        if (p.a >= p.l) { parts[i] = parts[parts.length - 1]; parts.pop(); continue; }
+        u = Math.max(0, 1 - 1.5 * dt); p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= u; p.vy *= u; if (p.k === 1) p.vy -= 25 * dt;
+      }
+      cf.globalCompositeOperation = 'source-over';
+      for (i = 0; i < parts.length; i++) {
+        p = parts[i]; if (p.k !== 1) continue;
+        u = p.a / p.l; sz = p.s0 + (p.s1 - p.s0) * u; cf.globalAlpha = Math.min(1, (1 - u) * 1.4);
+        cf.drawImage(SMOKE, p.x - sz, p.y - sz, sz * 2, sz * 2);
+      }
+      cf.globalCompositeOperation = 'lighter'; cf.lineCap = 'round';
+      for (i = 0; i < parts.length; i++) {
+        p = parts[i]; if (p.k === 1) continue; u = p.a / p.l;
+        if (p.k === 2) { cf.globalAlpha = 1 - u; cf.strokeStyle = '#ffd98a'; cf.lineWidth = 1.7; cf.beginPath(); cf.moveTo(p.x, p.y); cf.lineTo(p.x - p.vx * .035, p.y - p.vy * .035); cf.stroke(); continue; }
+        sz = p.s0 + (p.s1 - p.s0) * u; cf.globalAlpha = Math.min(1, (1 - u) * 1.6);
+        cf.drawImage(FIRE[Math.min(4, (u * 5) | 0)], p.x - sz, p.y - sz, sz * 2, sz * 2);
+      }
+      cf.globalCompositeOperation = 'source-over'; cf.globalAlpha = 1;
+      for (i = rings.length - 1; i >= 0; i--) {
+        var rg = rings[i]; rg.r += rg.v * dt; rg.v *= Math.max(0, 1 - 2.2 * dt); rg.a -= dt * 1.5;
+        if (rg.a <= 0) { rings.splice(i, 1); continue; }
+        cf.strokeStyle = 'rgba(' + rg.c + ',' + rg.a + ')'; cf.lineWidth = 1 + 7 * rg.a; cf.beginPath(); cf.arc(rg.x, rg.y, rg.r, 0, 7); cf.stroke();
+      }
+      if (meteor) {
+        m = meteor; var ln = 140 + 220 * m.k, tx = m.x - m.ux * ln, ty = m.y - m.uy * ln, gr = cf.createLinearGradient(tx, ty, m.x, m.y), j;
+        gr.addColorStop(0, 'rgba(255,80,10,0)'); gr.addColorStop(.55, 'rgba(255,140,40,.5)'); gr.addColorStop(1, 'rgba(255,245,200,.95)');
+        cf.globalCompositeOperation = 'lighter'; cf.strokeStyle = gr; cf.lineWidth = m.r * 1.7; cf.lineCap = 'round';
+        cf.beginPath(); cf.moveTo(tx, ty); cf.lineTo(m.x, m.y); cf.stroke();
+        for (j = 0; j < 7; j++) {   // тело пламени за камнем
+          var fz = m.r * (2.4 - j * .24) * (.9 + Math.random() * .25);
+          cf.globalAlpha = .75 - j * .08; cf.drawImage(FIRE[Math.min(3, (j / 2) | 0)], m.x - m.ux * m.r * j * .8 - fz, m.y - m.uy * m.r * j * .8 - fz, fz * 2, fz * 2);
+        }
+        cf.globalAlpha = .9; cf.drawImage(FIRE[0], m.x + m.ux * m.r * .5 - m.r * 1.6, m.y + m.uy * m.r * .5 - m.r * 1.6, m.r * 3.2, m.r * 3.2);
+        cf.globalCompositeOperation = 'source-over'; cf.globalAlpha = 1;
+        cf.save(); cf.translate(m.x, m.y); cf.rotate(m.rot); cf.drawImage(ROCK, -m.r * 1.45, -m.r * 1.45, m.r * 2.9, m.r * 2.9); cf.restore();
+        cf.globalCompositeOperation = 'lighter'; cf.globalAlpha = .55;   // жар на передней стороне
+        cf.drawImage(FIRE[2], m.x + m.ux * m.r * .4 - m.r * 1.5, m.y + m.uy * m.r * .4 - m.r * 1.5, m.r * 3, m.r * 3);
+        cf.globalCompositeOperation = 'source-over'; cf.globalAlpha = 1;
+        if (m.k >= 1) meteor = null;
+      }
+
+      if (alive()) requestAnimationFrame(loop);
+      else { on = false; cb.clearRect(0, 0, w, h); cf.clearRect(0, 0, w, h); }
+    }
+
+    return { strike: strike, reset: reset };
+  })();
+
+  run();
+})();
+</script>
+<script>
+/* ===== Фон: качающиеся звёзды и пролетающие кометы ===== */
+(function () {
+  var cv = document.getElementById('bg'), c = cv.getContext('2d');
+  var w = 0, h = 0, dpr = 1, stars = [], comets = [], nextC = 1500, last = 0;
+  var still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var COL = ['255,255,255', '190,225,255', '150,240,255', '255,236,200'];
+  function rnd(a, b) { return a + Math.random() * (b - a); }
+  function size() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    w = window.innerWidth; h = window.innerHeight;
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  }
+  function init() {
+    size();
+    var n = Math.max(60, Math.min(150, Math.round(w * h / 6500)));
+    for (var i = 0; i < n; i++) stars.push({
+      nx: Math.random(), ny: Math.random(), d: Math.random(), r: rnd(.6, 1.8),
+      p: rnd(0, 6.28), f: rnd(.8, 2.2), c: COL[(Math.random() * COL.length) | 0]
+    });
+  }
+  function spawn() {
+    var dir = Math.random() < .5 ? 1 : -1, ang = rnd(.45, 1.0), sp = rnd(420, 720);
+    comets.push({
+      x: dir > 0 ? rnd(-.1 * w, .7 * w) : rnd(.3 * w, 1.1 * w), y: rnd(-40, h * .35),
+      vx: Math.cos(ang) * sp * dir, vy: Math.sin(ang) * sp, sp: sp, len: rnd(120, 210), s: rnd(2.4, 3.6)
+    });
+  }
+  function frame(now) {
+    var dt = Math.min(.05, (now - last) / 1000); last = now;
+    c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h);
+
+    // звёзды: всё небо медленно покачивается туда-сюда, ближние звёзды сильнее дальних
+    var rot = still ? 0 : Math.sin(now / 7000) * .10, cx = w / 2, cy = h * .42, i, s;
+    for (i = 0; i < stars.length; i++) {
+      s = stars[i];
+      var a = rot * (.4 + s.d * 1.6), ca = Math.cos(a), sa = Math.sin(a), dx = s.nx * w - cx, dy = s.ny * h - cy;
+      var wob = still ? 0 : 1.5 + 3 * s.d;
+      var x = cx + dx * ca - dy * sa + Math.sin(now / 1700 * s.f + s.p) * wob;
+      var y = cy + dx * sa + dy * ca + Math.cos(now / 2100 * s.f + s.p) * wob;
+      var al = (.35 + .65 * Math.abs(Math.sin(now / 650 * s.f + s.p))) * (.5 + .5 * s.d);
+      c.fillStyle = 'rgba(' + s.c + ',' + al + ')';
+      c.fillRect(x - s.r / 2, y - s.r / 2, s.r, s.r);
+    }
+
+    // кометы
+    if (!still && now > nextC) {
+      spawn(); if (Math.random() < .2) setTimeout(spawn, 350);
+      nextC = now + rnd(2500, 7500);
+    }
+    for (i = comets.length - 1; i >= 0; i--) {
+      var m = comets[i];
+      m.x += m.vx * dt; m.y += m.vy * dt;
+      if (m.x < -m.len * 2 || m.x > w + m.len * 2 || m.y > h + m.len * 2) { comets.splice(i, 1); continue; }
+      var tx = m.x - m.vx / m.sp * m.len, ty = m.y - m.vy / m.sp * m.len;
+      var gr = c.createLinearGradient(tx, ty, m.x, m.y);
+      gr.addColorStop(0, 'rgba(110,225,255,0)'); gr.addColorStop(.7, 'rgba(150,235,255,.35)'); gr.addColorStop(1, 'rgba(255,255,255,.95)');
+      c.strokeStyle = gr; c.lineWidth = m.s; c.lineCap = 'round';
+      c.beginPath(); c.moveTo(tx, ty); c.lineTo(m.x, m.y); c.stroke();
+      var hg = c.createRadialGradient(m.x, m.y, 0, m.x, m.y, m.s * 4.5);
+      hg.addColorStop(0, 'rgba(255,255,255,1)'); hg.addColorStop(.4, 'rgba(150,235,255,.6)'); hg.addColorStop(1, 'rgba(80,200,255,0)');
+      c.fillStyle = hg; c.beginPath(); c.arc(m.x, m.y, m.s * 4.5, 0, 7); c.fill();
+    }
+    requestAnimationFrame(frame);
+  }
+  window.addEventListener('resize', size);
+  init(); requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
