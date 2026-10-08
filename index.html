@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>What's My IP</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: #070b14;
+    --card: rgba(255,255,255,.06);
+    --line: rgba(255,255,255,.1);
+    --text: #eef3ff;
+    --muted: #a3b1d1;
+    --accent: #34d399;
+    --accent2: #22d3ee;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    min-height: 100vh; min-height: 100dvh;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased; line-height: 1.35;
+    background:
+      radial-gradient(900px 500px at 50% -10%, rgba(34,211,238,.16), transparent 60%),
+      radial-gradient(700px 500px at 100% 100%, rgba(52,211,153,.10), transparent 60%),
+      var(--bg);
+    display: flex; flex-direction: column; align-items: center;
+    padding: calc(env(safe-area-inset-top, 0px) + 28px) 16px calc(env(safe-area-inset-bottom, 0px) + 28px);
+    overflow-x: hidden;
+  }
+
+  #bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+  .globe, .status, .card, .error { position: relative; z-index: 1; }
+  .globe { width: min(70vw, 250px); aspect-ratio: 1; flex: none; }
+  .globe canvas { width: 100%; height: 100%; display: block; }
+
+  .status { margin-top: 14px; min-height: 92px; text-align: center; }
+  .status h1 { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -.3px; background: linear-gradient(90deg, #ffffff, #7ff0ff 55%, #5eead4); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
+  .status p { margin: 8px 0 0; color: var(--muted); font-size: 15px; font-weight: 500; }
+  .dots::after { content: ""; animation: dots 1.3s steps(4, end) infinite; }
+  @keyframes dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
+
+  .check { width: 56px; height: 56px; display: none; margin: 0 auto 8px; }
+  .check circle { fill: rgba(52,211,153,.12); stroke: var(--accent); stroke-width: 3; stroke-dasharray: 176; stroke-dashoffset: 176; }
+  .check path { fill: none; stroke: var(--accent); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 36; stroke-dashoffset: 36; }
+  .check.show { display: block; animation: pop .45s ease-out; }
+  .check.show circle { animation: draw .55s ease-out forwards; }
+  .check.show path { animation: draw .35s .4s ease-out forwards; }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  @keyframes pop { 0% { transform: scale(.6); opacity: 0; } 70% { transform: scale(1.08); } 100% { transform: scale(1); opacity: 1; } }
+
+  .card {
+    width: 100%; max-width: 420px; margin-top: 8px;
+    background: rgba(255,255,255,.07); border: 1px solid rgba(34,211,238,.25); box-shadow: 0 10px 40px rgba(34,211,238,.08); border-radius: 20px;
+    padding: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    opacity: 0; transform: translateY(18px); pointer-events: none;
+    transition: opacity .5s ease, transform .5s ease;
+  }
+  .card.show { opacity: 1; transform: none; pointer-events: auto; }
+  .label { color: var(--accent2); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.8px; }
+  .iprow { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 0 14px; }
+  .ip { font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Roboto Mono", monospace; font-size: 25px; font-weight: 700; letter-spacing: 1.5px; color: #fff; text-shadow: 0 0 18px rgba(34,211,238,.45); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: clip; }
+  .copy {
+    flex: none; display: flex; align-items: center; gap: 6px;
+    border: 0; border-radius: 12px; padding: 10px 14px; cursor: pointer;
+    background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #04130d;
+    font-size: 14px; font-weight: 700;
+  }
+  .copy:active { transform: scale(.97); }
+  .rows { border-top: 1px solid var(--line); }
+  .row { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+  .row:last-child { border-bottom: 0; padding-bottom: 0; }
+  .row span:first-child { color: var(--muted); flex: none; font-weight: 500; }
+  .row span:last-child { text-align: right; word-break: break-word; color: #fff; font-weight: 650; }
+  .note { margin-top: 14px; color: var(--muted); font-size: 12.5px; line-height: 1.45; text-align: center; opacity: .85; }
+
+  .error { display: none; width: 100%; max-width: 420px; margin-top: 4px; text-align: center; }
+  .error.show { display: block; }
+  .error p { color: var(--muted); margin: 0 0 14px; font-size: 14px; }
+  .btn {
+    border: 1px solid var(--line); background: var(--card); color: var(--text);
+    border-radius: 12px; padding: 11px 20px; font-size: 15px; cursor: pointer;
+  }
+
+  .toast {
+    position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 28px);
+    transform: translate(-50%, 20px); opacity: 0;
+    background: #15202e; border: 1px solid var(--line); color: var(--text);
+    padding: 10px 16px; border-radius: 12px; font-size: 14px; pointer-events: none;
+    transition: all .3s ease; z-index: 10;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .hint { position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); left: 0; right: 0; text-align: center; color: var(--muted); font-size: 12px; opacity: 0; transition: opacity .4s; pointer-events: none; }
+  .hint.show { opacity: .8; }
+</style>
+</head>
+<body>
+  <canvas id="bg"></canvas>
+
+  <div class="globe"><canvas id="globe"></canvas></div>
+
+  <div class="status" id="status">
+    <svg class="check" id="check" viewBox="0 0 64 64"><circle cx="32" cy="32" r="28"/><path d="M20 33 L29 42 L45 24"/></svg>
+    <h1 id="title">Определяем ваш IP<span class="dots"></span></h1>
+    <p id="sub">Подключаемся к сети</p>
+  </div>
+
+  <div class="card" id="card">
+    <div class="label">Ваш IP-адрес</div>
+    <div class="iprow">
+      <div class="ip" id="ip">•••.•••.•••.•••</div>
+      <button class="copy" id="copy">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
+        Скопировать
+      </button>
+    </div>
+    <div class="rows">
+      <div class="row"><span>Страна</span><span id="f-country">—</span></div>
+      <div class="row"><span>Регион</span><span id="f-region">—</span></div>
+      <div class="row"><span>Город</span><span id="f-city">—</span></div>
+      <div class="row"><span>Часовой пояс</span><span id="f-tz">—</span></div>
+      <div class="row"><span>Провайдер</span><span id="f-isp">—</span></div>
+      <div class="row"><span>ASN</span><span id="f-asn">—</span></div>
+      <div class="row"><span>Тип адреса</span><span id="f-type">—</span></div>
+      <div class="row"><span>Местное время</span><span id="f-time">—</span></div>
+    </div>
+    <div class="note">Адрес скрыт на экране — при копировании он вставится целиком вместе с данными.</div>
+  </div>
+
+  <div class="error" id="error">
+    <p id="errtext"></p>
+    <button class="btn" id="retry">Повторить</button>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div class="hint" id="hint">Коснитесь экрана, чтобы включить звук</div>
+
+<script>
+(function () {
+  'use strict';
+  var tg = window.Telegram && window.Telegram.WebApp;
+  if (tg) {
+    try { tg.ready(); tg.expand(); tg.setHeaderColor('#070b14'); tg.setBackgroundColor('#070b14'); } catch (e) {}
+  }
+  function haptic(kind, style) {
+    try {
+      if (!tg || !tg.HapticFeedback) return;
+      if (kind === 'notify') tg.HapticFeedback.notificationOccurred(style);
+      else tg.HapticFeedback.impactOccurred(style);
+    } catch (e) {}
+  }
+  var $ = function (id) { return document.getElementById(id); };
+  var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+
+  /* ================= ЗВУК (WebAudio, всё синтезируется на лету) ================= */
+  var Snd = (function () {
+    var ctx = null, master = null, muted = false, loading = false, loopTimer = null, drone = null;
+
+    function ensure() {
+      if (!ctx) {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        ctx = new AC();
+        master = ctx.createGain();
+        master.gain.value = 0.9;
+        master.connect(ctx.destination);
+        ctx.onstatechange = function () { if (ctx.state === 'running' && loading) startLoop(); };
+      }
+      if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} }
+      return ctx;
+    }
+    function running() { return ctx && ctx.state === 'running'; }
+
+    function tone(freq, t0, dur, vol, type, freqEnd) {
+      var o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = type || 'sine';
+      o.frequency.setValueAtTime(freq, t0);
+      if (freqEnd) o.frequency.exponentialRampToValueAtTime(freqEnd, t0 + dur);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(vol, t0 + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(g); g.connect(master);
+      o.start(t0); o.stop(t0 + dur + 0.05);
+    }
+
+    function startDrone() {
+      if (drone || !ctx) return;
+      var g = ctx.createGain(), t = ctx.currentTime;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.05, t + 1.2);
+      g.connect(master);
+      var o1 = ctx.createOscillator(), o2 = ctx.createOscillator();
+      o1.type = 'triangle'; o1.frequency.value = 98;
+      o2.type = 'sine'; o2.frequency.value = 147.5;
+      o1.connect(g); o2.connect(g);
+      o1.start(); o2.start();
+      drone = { g: g, oscs: [o1, o2] };
+    }
+    function stopDrone() {
+      if (!drone) return;
+      var d = drone; drone = null;
+      var t = ctx.currentTime;
+      d.g.gain.cancelScheduledValues(t);
+      d.g.gain.setValueAtTime(Math.max(d.g.gain.value, 0.0001), t);
+      d.g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+      d.oscs.forEach(function (o) { try { o.stop(t + 0.5); } catch (e) {} });
+    }
+    function blip() {
+      if (!running() || muted) return;
+      var t = ctx.currentTime;
+      tone(520, t, 0.35, 0.08, 'sine', 780);
+      tone(1040, t + 0.02, 0.22, 0.025, 'sine');
+    }
+    function startLoop() {
+      if (!running() || muted) return;
+      startDrone();
+      if (!loopTimer) { blip(); loopTimer = setInterval(blip, 1100); }
+    }
+
+    return {
+      startLoading: function () { loading = true; ensure(); startLoop(); },
+      stopLoading: function () {
+        loading = false;
+        if (loopTimer) { clearInterval(loopTimer); loopTimer = null; }
+        if (ctx) stopDrone();
+      },
+      unlock: function () {            // вызывается по первому касанию (политика автоплея)
+        ensure();
+        var tries = 0;
+        (function wait() {
+          if (running()) { if (loading) startLoop(); hideHint(); return; }
+          if (tries++ < 20) setTimeout(wait, 50);
+        })();
+      },
+      isRunning: running,
+      success: function () {           // «галочка»: два восходящих колокольчика
+        if (!running() || muted) return;
+        var t = ctx.currentTime;
+        tone(1046.5, t, 0.5, 0.22, 'sine');
+        tone(2093, t, 0.35, 0.05, 'sine');
+        tone(1568, t + 0.11, 0.7, 0.24, 'sine');
+        tone(3136, t + 0.11, 0.45, 0.05, 'sine');
+      },
+      tick: function () {
+        if (!running() || muted) return;
+        var t = ctx.currentTime;
+        tone(1250, t, 0.09, 0.14, 'triangle');
+      },
+      setMuted: function (m) {
+        muted = m;
+        if (m) { if (loopTimer) { clearInterval(loopTimer); loopTimer = null; } if (ctx) stopDrone(); }
+        else if (loading) startLoop();
+      },
+      isMuted: function () { return muted; }
+    };
+  })();
+
+  var hintEl = $('hint');
+  function showHint() { hintEl.classList.add('show'); }
+  function hideHint() { hintEl.classList.remove('show'); }
+
+  var unlocked = false;
+  function onFirstTouch() {
+    if (unlocked) return; unlocked = true;
+    Snd.unlock();
+    document.removeEventListener('pointerdown', onFirstTouch, true);
+    document.removeEventListener('touchstart', onFirstTouch, true);
+  }
+  document.addEventListener('pointerdown', onFirstTouch, true);
+  document.addEventListener('touchstart', onFirstTouch, true);
+
+  /* ================= ГЛОБУС (самодельная анимация на canvas) ================= */
+  // Упрощённые контуры материков [долгота, широта] — для стилизованного точечного глобуса
+  var LAND = [
+    [[-168,66],[-156,71],[-125,70],[-95,72],[-80,68],[-62,60],[-55,52],[-66,44],[-76,38],[-81,31],[-80,25],[-83,29],[-90,29],[-97,26],[-97,20],[-88,16],[-83,9],[-78,8],[-86,13],[-95,16],[-105,20],[-110,23],[-115,30],[-124,40],[-124,48],[-135,58],[-150,60],[-165,60]], // Сев. Америка
+    [[-55,60],[-45,60],[-20,70],[-20,80],[-60,82],[-70,77],[-58,68]],                                                                                                                                                                            // Гренландия
+    [[-80,9],[-72,12],[-62,10],[-50,0],[-35,-6],[-40,-22],[-48,-28],[-58,-38],[-65,-42],[-68,-52],[-72,-52],[-74,-42],[-72,-30],[-70,-18],[-76,-14],[-81,-5],[-79,1]],                                                                          // Юж. Америка
+    [[-17,15],[-17,21],[-10,30],[-6,36],[10,37],[20,33],[32,31],[34,28],[43,12],[51,12],[40,-3],[40,-15],[35,-25],[27,-34],[18,-34],[12,-18],[9,-1],[9,4],[-8,4],[-15,11]],                                                                     // Африка
+    [[-9,37],[-9,43],[-2,44],[-5,48],[2,51],[8,54],[10,58],[5,62],[15,69],[28,71],[40,67],[40,55],[30,46],[28,41],[23,37],[18,40],[12,44],[8,44],[3,43],[0,38],[-5,36]],                                                                        // Европа
+    [[28,41],[40,41],[50,40],[55,45],[60,50],[60,70],[80,73],[100,77],[115,74],[140,72],[160,70],[180,68],[180,65],[165,60],[160,54],[155,59],[142,59],[135,54],[140,48],[130,42],[127,35],[122,40],[121,31],[120,24],[110,20],[108,15],[106,9],[100,13],[100,3],[104,1],[98,8],[93,19],[88,22],[80,15],[77,8],[73,18],[68,24],[57,25],[56,27],[48,30],[50,26],[56,22],[59,22],[52,16],[43,13],[35,28],[34,31],[36,36],[27,37]], // Азия
+    [[114,-22],[122,-18],[130,-12],[137,-12],[142,-11],[146,-19],[153,-26],[150,-37],[141,-38],[135,-34],[115,-34]],                                                                                                                              // Австралия
+    [[-5,50],[1,51],[0,55],[-3,59],[-6,57]],                                                                                                                                                                                                     // Британия
+    [[130,32],[135,34],[141,38],[142,44],[140,41],[136,36]]                                                                                                                                                                                      // Япония
+  ];
+  var D = Math.PI / 180;
+  function inPoly(lon, lat, poly) {
+    var c = false;
+    for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      var xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+      if (((yi > lat) !== (yj > lat)) && (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi)) c = !c;
+    }
+    return c;
+  }
+  var landPts = [], seaPts = [];
+  for (var la = -84; la <= 84; la += 4) {
+    var cl = Math.cos(la * D), step = 4 / Math.max(cl, 0.2);
+    for (var lo = -180; lo < 180; lo += step) {
+      var isLand = false;
+      for (var k = 0; k < LAND.length; k++) { if (inPoly(lo, la, LAND[k])) { isLand = true; break; } }
+      var p = { lo: lo * D, sl: Math.sin(la * D), cl: cl };
+      (isLand ? landPts : seaPts).push(p);
+    }
+  }
+
+  var canvas = $('globe'), g = canvas.getContext('2d');
+  var W = 0, H = 0, dpr = 1;
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 3);
+    var r = canvas.getBoundingClientRect();
+    W = Math.round(r.width * dpr); H = Math.round(r.height * dpr);
+    canvas.width = W; canvas.height = H;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  var rotL = 0, rotP = 0.35;                 // текущий центр глобуса (рад)
+  var tween = null;                          // анимация наведения на точку пользователя
+  var marker = null;                         // {lo, la}
+  var lastT = performance.now();
+
+  function ease(t) { return 1 - Math.pow(1 - t, 3); }
+
+  function focusOn(lat, lon) {
+    var targetL = lon * D;
+    var targetP = Math.max(-50, Math.min(50, lat)) * D;
+    var delta = ((targetL - rotL + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+    tween = { t0: performance.now(), dur: 1800, l0: rotL, p0: rotP, dl: delta + 2 * Math.PI, tp: targetP };
+    marker = { lo: targetL, la: lat * D };
+  }
+
+  function frame(now) {
+    var dt = Math.min(0.05, (now - lastT) / 1000); lastT = now;
+    if (tween) {
+      var k = Math.min(1, (now - tween.t0) / tween.dur), e = ease(k);
+      rotL = tween.l0 + tween.dl * e;
+      rotP = tween.p0 + (tween.tp - tween.p0) * e;
+      if (k >= 1) tween = null;
+    } else if (!marker) {
+      rotL += dt * 0.6;
+    }
+    draw(now);
+    requestAnimationFrame(frame);
+  }
+
+  function draw(now) {
+    if (!W) return;
+    var cx = W / 2, cy = H / 2, R = W * 0.36;
+    var sp0 = Math.sin(rotP), cp0 = Math.cos(rotP);
+    g.clearRect(0, 0, W, H);
+
+    // атмосфера (мягко пульсирует)
+    var pulse = 0.5 + 0.5 * Math.sin(now / 900);
+    var atm = g.createRadialGradient(cx, cy, R * 0.92, cx, cy, R * 1.45);
+    atm.addColorStop(0, 'rgba(60,225,255,' + (0.50 + 0.16 * pulse) + ')'); atm.addColorStop(0.4, 'rgba(60,160,255,.20)'); atm.addColorStop(1, 'rgba(60,160,255,0)');
+    g.fillStyle = atm; g.beginPath(); g.arc(cx, cy, R * 1.45, 0, 7); g.fill();
+
+    // тело шара
+    var body = g.createRadialGradient(cx - R * .35, cy - R * .4, R * .1, cx, cy, R);
+    body.addColorStop(0, '#2a68c4'); body.addColorStop(.6, '#143a80'); body.addColorStop(1, '#081b44');
+    g.fillStyle = body; g.beginPath(); g.arc(cx, cy, R, 0, 7); g.fill();
+
+    // точки: океан → суша
+    var ds = Math.max(1.3, dpr * 1.2), dl = Math.max(2.1, dpr * 1.9), i, p, dlo, cosc, x, y;
+    g.fillStyle = '#6fd0ff';
+    for (i = 0; i < seaPts.length; i++) {
+      p = seaPts[i]; dlo = p.lo - rotL;
+      cosc = sp0 * p.sl + cp0 * p.cl * Math.cos(dlo);
+      if (cosc <= 0.02) continue;
+      x = p.cl * Math.sin(dlo); y = cp0 * p.sl - sp0 * p.cl * Math.cos(dlo);
+      g.globalAlpha = 0.24 + 0.42 * cosc;
+      g.fillRect(cx + R * x - ds / 2, cy - R * y - ds / 2, ds, ds);
+    }
+    for (i = 0; i < landPts.length; i++) {
+      p = landPts[i]; dlo = p.lo - rotL;
+      cosc = sp0 * p.sl + cp0 * p.cl * Math.cos(dlo);
+      if (cosc <= 0.02) continue;
+      x = p.cl * Math.sin(dlo); y = cp0 * p.sl - sp0 * p.cl * Math.cos(dlo);
+      g.fillStyle = cosc > 0.7 ? '#b8ff6a' : cosc > 0.35 ? '#3dff9c' : '#18d8b4';
+      g.globalAlpha = 0.6 + 0.4 * cosc;
+      g.fillRect(cx + R * x - dl / 2, cy - R * y - dl / 2, dl, dl);
+    }
+    g.globalAlpha = 1;
+
+    // свечение у края и блик от «солнца»
+    var rim = g.createRadialGradient(cx, cy, R * 0.62, cx, cy, R);
+    rim.addColorStop(0, 'rgba(90,210,255,0)'); rim.addColorStop(1, 'rgba(90,210,255,.40)');
+    g.fillStyle = rim; g.beginPath(); g.arc(cx, cy, R, 0, 7); g.fill();
+    var hl = g.createRadialGradient(cx - R * .4, cy - R * .45, 0, cx - R * .4, cy - R * .45, R * .75);
+    hl.addColorStop(0, 'rgba(255,255,255,.28)'); hl.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = hl; g.beginPath(); g.arc(cx, cy, R, 0, 7); g.fill();
+
+    // контур
+    g.lineWidth = 2 * dpr; g.strokeStyle = 'rgba(130,240,255,.9)';
+    g.beginPath(); g.arc(cx, cy, R, 0, 7); g.stroke();
+
+    // орбитальное кольцо со «спутником»
+    g.save();
+    g.translate(cx, cy); g.rotate(-0.38);
+    g.lineWidth = 1.2 * dpr; g.strokeStyle = 'rgba(120,235,255,.55)';
+    g.beginPath(); g.ellipse(0, 0, R * 1.22, R * 0.36, 0, 0, 7); g.stroke();
+    var a = now / 1400;
+    var sx = Math.cos(a) * R * 1.22, sy = Math.sin(a) * R * 0.36;
+    var sg = g.createRadialGradient(sx, sy, 0, sx, sy, 9 * dpr);
+    sg.addColorStop(0, 'rgba(255,255,255,.95)'); sg.addColorStop(1, 'rgba(34,211,238,0)');
+    g.fillStyle = sg; g.beginPath(); g.arc(sx, sy, 9 * dpr, 0, 7); g.fill();
+    g.restore();
+
+    // маркер местоположения
+    if (marker) {
+      var mlo = marker.lo - rotL, mc = sp0 * Math.sin(marker.la) + cp0 * Math.cos(marker.la) * Math.cos(mlo);
+      if (mc > 0.02) {
+        var mx = cx + R * Math.cos(marker.la) * Math.sin(mlo);
+        var my = cy - R * (cp0 * Math.sin(marker.la) - sp0 * Math.cos(marker.la) * Math.cos(mlo));
+        var ph = (now % 1600) / 1600;
+        g.lineWidth = 2 * dpr; g.strokeStyle = 'rgba(255,255,255,' + (0.8 * (1 - ph)) + ')';
+        g.beginPath(); g.arc(mx, my, (4 + 20 * ph) * dpr, 0, 7); g.stroke();
+        g.fillStyle = '#ffffff'; g.beginPath(); g.arc(mx, my, 4 * dpr, 0, 7); g.fill();
+        g.fillStyle = '#ff2d55'; g.beginPath(); g.arc(mx, my, 2.6 * dpr, 0, 7); g.fill();
+      }
+    }
+  }
+  requestAnimationFrame(frame);
+
+  /* ================= ЛОГИКА ================= */
+  var state = { data: null };
+  var elTitle = $('title'), elSub = $('sub'), elCheck = $('check'), elCard = $('card'), elErr = $('error');
+
+  function maskFor(type) { return type === 'IPv6' ? '••••:••••:••••:••••:••••' : '•••.•••.•••.•••'; }
+  function setText(id, v) { $(id).textContent = v ? v : '—'; }
+
+  function setLoading() {
+    elErr.classList.remove('show');
+    elCard.classList.remove('show');
+    elCheck.classList.remove('show');
+    marker = null; tween = null;
+    elTitle.innerHTML = 'Определяем ваш IP<span class="dots"></span>';
+    elSub.textContent = 'Подключаемся к сети';
+  }
+
+  function showError(text) {
+    elCheck.classList.remove('show');
+    elTitle.textContent = 'Не получилось';
+    elSub.textContent = '';
+    $('errtext').textContent = text;
+    elErr.classList.add('show');
+    haptic('notify', 'error');
+  }
+
+  var clockTimer = null;
+  function showResult(d) {
+    state.data = d;
+    elTitle.textContent = 'IP определён';
+    elSub.textContent = d.geoFailed ? 'Данные о местоположении получить не удалось' : 'Данные получены';
+    elCheck.classList.add('show');
+    $('ip').textContent = maskFor(d.type);
+    setText('f-country', d.country ? ((d.flag ? d.flag + ' ' : '') + d.country) : null);
+    setText('f-region', d.region);
+    setText('f-city', d.city);
+    setText('f-tz', d.timezone);
+    setText('f-isp', d.isp);
+    setText('f-asn', d.asn);
+    setText('f-type', d.type);
+    clearInterval(clockTimer);
+    function tickClock() {
+      try { $('f-time').textContent = new Intl.DateTimeFormat('ru-RU', { timeZone: d.timezone, hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date()); }
+      catch (e) { $('f-time').textContent = '—'; }
+    }
+    if (d.timezone) { tickClock(); clockTimer = setInterval(tickClock, 1000); } else { $('f-time').textContent = '—'; }
+    if (typeof d.lat === 'number' && typeof d.lon === 'number') focusOn(d.lat, d.lon);
+    Snd.success();
+    haptic('notify', 'success');
+    setTimeout(function () { elCard.classList.add('show'); }, 650);
+  }
+
+  async function fetchIp() {
+    var initData = tg && tg.initData;
+    if (!initData) { var e0 = new Error('open-in-telegram'); e0.code = 'tg'; throw e0; }
+    var res = await fetch('/api/ip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initData: initData })
+    });
+    var body = {};
+    try { body = await res.json(); } catch (e) {}
+    if (res.status === 403) { var e1 = new Error('consent'); e1.code = 'consent'; throw e1; }
+    if (res.status === 429) { var e2 = new Error('rate'); e2.code = 'rate'; throw e2; }
+    if (!res.ok || !body.ip) { var e3 = new Error(body.error || 'fail'); e3.code = 'fail'; throw e3; }
+    return body;
+  }
+
+  async function run() {
+    setLoading();
+    Snd.startLoading();
+    if (!Snd.isRunning()) setTimeout(function () { if (!Snd.isRunning() && !Snd.isMuted()) showHint(); }, 600);
+    var t0 = Date.now(), data = null, err = null;
+    try { data = await fetchIp(); } catch (e) { err = e; }
+    await sleep(Math.max(0, 2600 - (Date.now() - t0)));   // чтобы анимация успела «сыграть»
+    Snd.stopLoading();
+    hideHint();
+    if (err) {
+      var msg = 'Не удалось определить IP. Проверьте соединение и попробуйте ещё раз.';
+      if (err.code === 'tg') msg = 'Откройте это приложение из Telegram — через кнопку в боте.';
+      else if (err.code === 'consent') msg = 'Сначала примите пользовательское соглашение в боте (команда /start).';
+      else if (err.code === 'rate') msg = 'Слишком часто. Подождите пару секунд и повторите.';
+      return showError(msg);
+    }
+    showResult(data);
+  }
+
+  /* ---- копирование ---- */
+  var toastEl = $('toast'), toastTimer = null;
+  function toast(t) {
+    toastEl.textContent = t; toastEl.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 1800);
+  }
+  function buildText(d) {
+    var lines = ['IP: ' + d.ip];
+    if (d.country) lines.push('Страна: ' + d.country);
+    if (d.region) lines.push('Регион: ' + d.region);
+    if (d.city) lines.push('Город: ' + d.city);
+    if (d.timezone) lines.push('Часовой пояс: ' + d.timezone);
+    if (d.isp) lines.push('Провайдер: ' + d.isp);
+    if (d.asn) lines.push('ASN: ' + d.asn);
+    if (d.type) lines.push('Тип: ' + d.type);
+    return lines.join('\n');
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+    document.body.appendChild(ta); ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+    return ok;
+  }
+  $('copy').addEventListener('click', async function () {
+    if (!state.data) return;
+    var text = buildText(state.data), ok = false;
+    try { await navigator.clipboard.writeText(text); ok = true; } catch (e) { ok = fallbackCopy(text); }
+    if (ok) { toast('Скопировано ✓'); Snd.tick(); haptic('impact', 'light'); }
+    else { toast('Не удалось скопировать'); haptic('notify', 'error'); }
+  });
+
+  $('retry').addEventListener('click', function () {
+    if (tg && !tg.initData) { try { tg.close(); } catch (e) {} return; }
+    run();
+  });
+
+  run();
+})();
+</script>
+<script>
+/* ===== Фон: качающиеся звёзды и пролетающие кометы ===== */
+(function () {
+  var cv = document.getElementById('bg'), c = cv.getContext('2d');
+  var w = 0, h = 0, dpr = 1, stars = [], comets = [], nextC = 1500, last = 0;
+  var still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var COL = ['255,255,255', '190,225,255', '150,240,255', '255,236,200'];
+  function rnd(a, b) { return a + Math.random() * (b - a); }
+  function size() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    w = window.innerWidth; h = window.innerHeight;
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  }
+  function init() {
+    size();
+    var n = Math.max(60, Math.min(150, Math.round(w * h / 6500)));
+    for (var i = 0; i < n; i++) stars.push({
+      nx: Math.random(), ny: Math.random(), d: Math.random(), r: rnd(.6, 1.8),
+      p: rnd(0, 6.28), f: rnd(.8, 2.2), c: COL[(Math.random() * COL.length) | 0]
+    });
+  }
+  function spawn() {
+    var dir = Math.random() < .5 ? 1 : -1, ang = rnd(.45, 1.0), sp = rnd(420, 720);
+    comets.push({
+      x: dir > 0 ? rnd(-.1 * w, .7 * w) : rnd(.3 * w, 1.1 * w), y: rnd(-40, h * .35),
+      vx: Math.cos(ang) * sp * dir, vy: Math.sin(ang) * sp, sp: sp, len: rnd(120, 210), s: rnd(2.4, 3.6)
+    });
+  }
+  function frame(now) {
+    var dt = Math.min(.05, (now - last) / 1000); last = now;
+    c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h);
+
+    // звёзды: всё небо медленно покачивается туда-сюда, ближние звёзды сильнее дальних
+    var rot = still ? 0 : Math.sin(now / 7000) * .10, cx = w / 2, cy = h * .42, i, s;
+    for (i = 0; i < stars.length; i++) {
+      s = stars[i];
+      var a = rot * (.4 + s.d * 1.6), ca = Math.cos(a), sa = Math.sin(a), dx = s.nx * w - cx, dy = s.ny * h - cy;
+      var wob = still ? 0 : 1.5 + 3 * s.d;
+      var x = cx + dx * ca - dy * sa + Math.sin(now / 1700 * s.f + s.p) * wob;
+      var y = cy + dx * sa + dy * ca + Math.cos(now / 2100 * s.f + s.p) * wob;
+      var al = (.35 + .65 * Math.abs(Math.sin(now / 650 * s.f + s.p))) * (.5 + .5 * s.d);
+      c.fillStyle = 'rgba(' + s.c + ',' + al + ')';
+      c.fillRect(x - s.r / 2, y - s.r / 2, s.r, s.r);
+    }
+
+    // кометы
+    if (!still && now > nextC) {
+      spawn(); if (Math.random() < .2) setTimeout(spawn, 350);
+      nextC = now + rnd(2500, 7500);
+    }
+    for (i = comets.length - 1; i >= 0; i--) {
+      var m = comets[i];
+      m.x += m.vx * dt; m.y += m.vy * dt;
+      if (m.x < -m.len * 2 || m.x > w + m.len * 2 || m.y > h + m.len * 2) { comets.splice(i, 1); continue; }
+      var tx = m.x - m.vx / m.sp * m.len, ty = m.y - m.vy / m.sp * m.len;
+      var gr = c.createLinearGradient(tx, ty, m.x, m.y);
+      gr.addColorStop(0, 'rgba(110,225,255,0)'); gr.addColorStop(.7, 'rgba(150,235,255,.35)'); gr.addColorStop(1, 'rgba(255,255,255,.95)');
+      c.strokeStyle = gr; c.lineWidth = m.s; c.lineCap = 'round';
+      c.beginPath(); c.moveTo(tx, ty); c.lineTo(m.x, m.y); c.stroke();
+      var hg = c.createRadialGradient(m.x, m.y, 0, m.x, m.y, m.s * 4.5);
+      hg.addColorStop(0, 'rgba(255,255,255,1)'); hg.addColorStop(.4, 'rgba(150,235,255,.6)'); hg.addColorStop(1, 'rgba(80,200,255,0)');
+      c.fillStyle = hg; c.beginPath(); c.arc(m.x, m.y, m.s * 4.5, 0, 7); c.fill();
+    }
+    requestAnimationFrame(frame);
+  }
+  window.addEventListener('resize', size);
+  init(); requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
